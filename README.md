@@ -16,7 +16,7 @@ Aplicar EDA y visualización/algoritmos para detectar patrones en **viajes de ta
 reto/
 │
 ├── README.md                 # uso del repositorio
-└── solucione-equipo/         # entregables por equipo (en su propia carpeta)
+└── solucion-equipo/         # entregables por equipo (en su propia carpeta)
 ```
 ---
 
