@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Late Night Safety Index</title>
+		<style>
+			:root {
+				--bg: #0f172a;
+				--panel: #111827;
+				--text: #e5e7eb;
+				--muted: #9ca3af;
+				--accent: #60a5fa;
+			}
+			html, body { height: 100%; }
+			body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: var(--bg); color: var(--text); }
+			.container { max-width: 1100px; margin: 0 auto; padding: 24px; }
+			header { display:flex; align-items:center; justify-content:space-between; margin-bottom: 16px; }
+			h1 { font-size: 22px; margin: 0; }
+			.controls { display:flex; gap: 8px; align-items:center; color: var(--muted); }
+			.cards { display:grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 16px 0 20px; }
+			.card { background: var(--panel); border: 1px solid #1f2937; border-radius: 10px; padding: 14px; }
+			.card h3 { margin: 0 0 4px; font-size: 13px; color: var(--muted); font-weight: 600; }
+			.card .value { font-size: 22px; font-weight: 700; color: var(--text); }
+			.grid { display:grid; grid-template-columns: 1fr; gap: 16px; }
+			.panel { background: var(--panel); border:1px solid #1f2937; border-radius: 10px; padding: 14px; }
+			.panel h2 { margin: 0 0 10px; font-size: 16px; color: var(--muted); }
+			table { width:100%; border-collapse: collapse; font-size: 13px; }
+			th, td { border-bottom: 1px solid #1f2937; padding: 8px 6px; text-align: right; }
+			th { text-align: right; color: var(--muted); font-weight: 600; }
+			th:first-child, td:first-child { text-align: left; }
+			caption { text-align:left; color: var(--muted); margin-bottom: 8px; }
+			.error { color: #fecaca; background: #7f1d1d; border: 1px solid #b91c1c; padding: 8px 10px; border-radius: 8px; }
+			footer { margin-top: 18px; color: var(--muted); font-size: 12px; text-align: center; }
+			.small { color: var(--muted); font-size: 12px; }
+			.badge { padding: 2px 6px; border-radius: 999px; background: #1f2937; border:1px solid #374151; font-size: 11px; color: var(--muted); }
+			@media (max-width: 800px) { .cards { grid-template-columns: 1fr; } }
+		</style>
+		<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+	</head>
+	<body>
+		<div class="container">
+			<header>
+				<h1>Late Night Safety Index <span class="badge">NYC Yellow Taxi</span></h1>
+				<div class="controls">
+					<label for="apiBase" class="small">API:</label>
+					<input id="apiBase" value="http://127.0.0.1:5000" size="26" />
+					<button id="reloadBtn">Reload</button>
+				</div>
+			</header>
+
+			<div id="error" class="error" style="display:none"></div>
+
+			<section class="cards">
+				<div class="card">
+					<h3>Total late-night solo rides</h3>
+					<div id="totalRides" class="value">—</div>
+				</div>
+				<div class="card">
+					<h3>Avg distance (mi)</h3>
+					<div id="avgDistance" class="value">—</div>
+				</div>
+				<div class="card">
+					<h3>Avg fare ($)</h3>
+					<div id="avgFare" class="value">—</div>
+				</div>
+			</section>
+
+			<div class="grid">
+				<div class="panel">
+					<h2>Hourly trends (00:00–03:59)</h2>
+					<canvas id="hourlyChart" height="120"></canvas>
+				</div>
+
+				<div class="panel">
+								<h2>Top 20 zones by Safety Index</h2>
+					<table>
+						<thead>
+							<tr>
+											<th>Zone</th>
+								<th>Safety Index</th>
+								<th>Total rides</th>
+								<th>Avg distance</th>
+								<th>Avg fare</th>
+							</tr>
+						</thead>
+						<tbody id="zoneTableBody"></tbody>
+					</table>
+				</div>
+			</div>
+
+			<footer>
+				Data: NYC TLC (public) • Built for Late Night Safety Index
+			</footer>
+		</div>
+
+		<script>
+			const $ = (sel) => document.querySelector(sel);
+			let hourlyChart;
+
+			function showError(msg) {
+				const el = $('#error');
+				el.textContent = msg;
+				el.style.display = 'block';
+			}
+
+			function hideError() { $('#error').style.display = 'none'; }
+
+			async function fetchJson(path) {
+				const base = $('#apiBase').value.replace(/\/$/, '');
+				const url = `${base}${path}`;
+				const res = await fetch(url);
+				if (!res.ok) throw new Error(`HTTP ${res.status} for ${path}`);
+				return res.json();
+			}
+
+			function formatNumber(n, digits=0) {
+				if (n === null || n === undefined || Number.isNaN(n)) return '—';
+				return Number(n).toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: digits });
+			}
+
+			function renderSummary(summary) {
+				$('#totalRides').textContent = formatNumber(summary.total_rides);
+				$('#avgDistance').textContent = formatNumber(summary.avg_distance, 2);
+				$('#avgFare').textContent = formatNumber(summary.avg_fare, 2);
+			}
+
+					function renderZoneTable(rows) {
+				// Sort by safety_index desc and take top 20
+				const top = [...rows].sort((a,b) => (b.safety_index ?? 0) - (a.safety_index ?? 0)).slice(0, 20);
+				const tbody = $('#zoneTableBody');
+				tbody.innerHTML = top.map(r => `
+					<tr>
+								<td>${(r.zone_name ?? r.PULocationID) || 'Unknown'}</td>
+						<td>${formatNumber(r.safety_index, 3)}</td>
+						<td>${formatNumber(r.total_rides)}</td>
+						<td>${formatNumber(r.avg_distance, 2)}</td>
+						<td>${formatNumber(r.avg_fare, 2)}</td>
+					</tr>
+				`).join('');
+			}
+
+			function renderHourlyChart(data) {
+				const ctx = $('#hourlyChart');
+				const hours = [0,1,2,3];
+				const values = hours.map(h => data[h] ?? 0);
+				if (hourlyChart) hourlyChart.destroy();
+				hourlyChart = new Chart(ctx, {
+					type: 'line',
+					data: {
+						labels: hours.map(h => `${h}:00`),
+						datasets: [{
+							label: 'Rides',
+							data: values,
+							borderColor: '#60a5fa',
+							backgroundColor: 'rgba(96,165,250,0.2)',
+							tension: 0.3,
+							fill: true,
+						}]
+					},
+					options: {
+						plugins: { legend: { display: false } },
+						scales: {
+							x: { grid: { color: '#1f2937' }, ticks: { color: '#9ca3af' } },
+							y: { grid: { color: '#1f2937' }, ticks: { color: '#9ca3af' }, beginAtZero: true }
+						}
+					}
+				});
+			}
+
+			async function loadAll() {
+				hideError();
+				try {
+					const [summary, zones, hourly] = await Promise.all([
+						fetchJson('/summary'),
+						fetchJson('/zone-stats'),
+						fetchJson('/hourly-trends'),
+					]);
+					renderSummary(summary);
+					renderZoneTable(zones);
+					renderHourlyChart(hourly);
+				} catch (err) {
+					showError(err.message + '\nTip: ensure your Flask app is running and CORS is allowed.');
+					console.error(err);
+				}
+			}
+
+			$('#reloadBtn').addEventListener('click', loadAll);
+			window.addEventListener('load', loadAll);
+		</script>
+	</body>
+	</html>
