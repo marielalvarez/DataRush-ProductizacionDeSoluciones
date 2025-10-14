@@ -39,14 +39,32 @@
 		<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 	</head>
 	<body>
-		<div class="container">
+			<div id="loading" style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:100;background:rgba(15,23,42,0.85);color:#fff;align-items:center;justify-content:center;font-size:2em;">
+				<div style="margin:auto;">Loading...</div>
+			</div>
+			<div class="container">
 			<header>
 				<h1>Late Night Safety Index <span class="badge">NYC Yellow Taxi</span></h1>
-				<div class="controls">
-					<label for="apiBase" class="small">API:</label>
-					<input id="apiBase" value="http://127.0.0.1:5000" size="26" />
-					<button id="reloadBtn">Reload</button>
-				</div>
+						<div class="controls">
+							<label for="monthSelect" class="small">Month:</label>
+							<select id="monthSelect">
+								<option value="2023-01">Jan 2023</option>
+								<option value="2023-02">Feb 2023</option>
+								<option value="2023-03">Mar 2023</option>
+								<option value="2023-04">Apr 2023</option>
+								<option value="2023-05">May 2023</option>
+								<option value="2023-06">Jun 2023</option>
+								<option value="2023-07">Jul 2023</option>
+								<option value="2023-08">Aug 2023</option>
+								<option value="2023-09">Sep 2023</option>
+								<option value="2023-10">Oct 2023</option>
+								<option value="2023-11">Nov 2023</option>
+								<option value="2023-12">Dec 2023</option>
+							</select>
+							<label for="apiBase" class="small">API:</label>
+							<input id="apiBase" value="http://127.0.0.1:5000" size="26" />
+							<button id="reloadBtn">Reload</button>
+						</div>
 			</header>
 
 			<div id="error" class="error" style="display:none"></div>
@@ -106,13 +124,18 @@
 
 			function hideError() { $('#error').style.display = 'none'; }
 
-			async function fetchJson(path) {
-				const base = $('#apiBase').value.replace(/\/$/, '');
-				const url = `${base}${path}`;
-				const res = await fetch(url);
-				if (!res.ok) throw new Error(`HTTP ${res.status} for ${path}`);
-				return res.json();
-			}
+					function getSelectedMonth() {
+						return $('#monthSelect').value;
+					}
+
+					async function fetchJson(path) {
+						const base = $('#apiBase').value.replace(/\/$/, '');
+						const month = getSelectedMonth();
+						const url = `${base}${path}?month=${month}`;
+						const res = await fetch(url);
+						if (!res.ok) throw new Error(`HTTP ${res.status} for ${path}`);
+						return res.json();
+					}
 
 			function formatNumber(n, digits=0) {
 				if (n === null || n === undefined || Number.isNaN(n)) return '—';
@@ -168,24 +191,30 @@
 				});
 			}
 
-			async function loadAll() {
-				hideError();
-				try {
-					const [summary, zones, hourly] = await Promise.all([
-						fetchJson('/summary'),
-						fetchJson('/zone-stats'),
-						fetchJson('/hourly-trends'),
-					]);
-					renderSummary(summary);
-					renderZoneTable(zones);
-					renderHourlyChart(hourly);
-				} catch (err) {
-					showError(err.message + '\nTip: ensure your Flask app is running and CORS is allowed.');
-					console.error(err);
-				}
-			}
+					function showLoading() { document.getElementById('loading').style.display = 'flex'; }
+					function hideLoading() { document.getElementById('loading').style.display = 'none'; }
+
+					async function loadAll() {
+						showLoading();
+						hideError();
+						try {
+							const [summary, zones, hourly] = await Promise.all([
+								fetchJson('/summary'),
+								fetchJson('/zone-stats'),
+								fetchJson('/hourly-trends'),
+							]);
+							renderSummary(summary);
+							renderZoneTable(zones);
+							renderHourlyChart(hourly);
+						} catch (err) {
+							showError(err.message + '\nTip: ensure your Flask app is running and CORS is allowed.');
+							console.error(err);
+						}
+						hideLoading();
+					}
 
 			$('#reloadBtn').addEventListener('click', loadAll);
+			$('#monthSelect').addEventListener('change', loadAll);
 			window.addEventListener('load', loadAll);
 		</script>
 	</body>
